@@ -1,3 +1,4 @@
+
 name: Production Approval
 
 on:
@@ -8,20 +9,31 @@ on:
 jobs:
   test-image:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Pull and run image
+      - name: Compute image tag
+        id: tag
         run: |
-          SHA=$(echo ${{ github.event.pull_request.head.sha }} | cut -c1-7)
-          docker pull krati07/jenkins-docker-demo:$SHA
-          docker run -d --name test-container krati07/jenkins-docker-demo:$SHA
-          sleep 5
-          docker ps --filter "name=test-container" --filter "status=running" | grep test-container
+          echo "sha=$(echo ${{ github.event.pull_request.head.sha }} | cut -c1-7)" >> "$GITHUB_OUTPUT"
+
+      - name: Pull image from Docker Hub
+        run: |
+          docker pull krati07/jenkins-docker-demo:${{ steps.tag.outputs.sha }}
+
+      - name: Run container
+        run: |
+          docker run \
+            --name test-container \
+            krati07/jenkins-docker-demo:${{ steps.tag.outputs.sha }}
 
   production-approval:
     needs: test-image
     runs-on: ubuntu-latest
+
     environment:
       name: production
+
     steps:
       - name: Production approved
-        run: echo "Approved for commit ${{ github.event.pull_request.head.sha }}"
+        run: |
+          echo "Approved for commit ${{ github.event.pull_request.head.sha }}"
