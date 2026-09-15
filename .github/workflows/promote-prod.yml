@@ -1,0 +1,27 @@
+name: Production Approval
+
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  test-image:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Pull and run image
+        run: |
+          SHA=$(echo ${{ github.event.pull_request.head.sha }} | cut -c1-7)
+          docker pull krati07/jenkins-docker-demo:$SHA
+          docker run -d --name test-container krati07/jenkins-docker-demo:$SHA
+          sleep 5
+          docker ps --filter "name=test-container" --filter "status=running" | grep test-container
+
+  production-approval:
+    needs: test-image
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+    steps:
+      - name: Production approved
+        run: echo "Approved for commit ${{ github.event.pull_request.head.sha }}"
