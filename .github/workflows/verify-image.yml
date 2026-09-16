@@ -1,10 +1,9 @@
 # .github/workflows/verify-image.yml
-# IMPORTANT: this one lives in the docker-jenkins-app repo, not docker-jenkins.
-# A pull_request workflow only runs if it sits in the repo the PR was opened in.
+# Lives in the docker-jenkins-app repo (a pull_request workflow only runs
+# from the repo the PR was opened in).
 #
-# Pulls the image Jenkins built for this commit and runs it on the GitHub
-# runner. Nothing runs on your machine. This job is the required check on main,
-# so the PR cannot be merged unless the container comes up.
+# Pulls the image Jenkins built for this commit and runs it on the runner.
+# No container runs on your machine. This is the required check on main.
 
 name: Verify image
 
@@ -14,49 +13,23 @@ on:
 
 env:
   DOCKER_IMAGE: krati07/jenkins-docker-demo
-  RUN_SECONDS: 15
 
 jobs:
   verify-image:
     runs-on: ubuntu-latest
     steps:
-      - name: Work out the image tag
-        run: echo "IMAGE_TAG=sha-${HEAD_SHA:0:12}" >> "$GITHUB_ENV"
-        env:
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-
-      - name: Log in to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      - name: Wait for Jenkins to publish the image
+      - name: Pull the image built for this commit
         run: |
-          echo "Looking for $DOCKER_IMAGE:$IMAGE_TAG ..."
-          for i in $(seq 1 30); do
-            if docker pull "$DOCKER_IMAGE:$IMAGE_TAG"; then
-              exit 0
-            fi
-            echo "Not published yet, retrying in 20s ($i/30)"
-            sleep 20
-          done
-          echo "Jenkins never published an image for this commit."
-          exit 1
+          TAG=sha-${GITHUB_SHA:0:12}
+          echo "IMAGE_TAG=$TAG" >> "$GITHUB_ENV"
+          docker pull "$DOCKER_IMAGE:$TAG"
 
-      - name: Run the container
+      - name: Run it and check it stays up
         run: |
           docker run -d --name verify "$DOCKER_IMAGE:$IMAGE_TAG"
-          echo "Letting it run for ${RUN_SECONDS}s ..."
-          sleep "$RUN_SECONDS"
+          sleep 15
+          docker ps --filter "name=verify" --filter "status=running" | grep verify
 
-          if [ "$(docker inspect -f '{{.State.Running}}' verify)" != "true" ]; then
-            echo "Container is not running. Exit code: $(docker inspect -f '{{.State.ExitCode}}' verify)"
-            docker logs verify
-            exit 1
-          fi
-          echo "Container is running - image is good."
-
-      - name: Container logs
+      - name: Show logs
         if: always()
         run: docker logs verify || true
