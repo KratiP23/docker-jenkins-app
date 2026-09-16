@@ -19,16 +19,36 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Pull the image built for this commit
+        env:
+          # GITHUB_SHA on a pull_request event is a temporary merge commit,
+          # not the commit Jenkins actually built. head.sha is the real one.
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
-          TAG=sha-${GITHUB_SHA:0:12}
+          TAG=sha-${HEAD_SHA:0:12}
           echo "IMAGE_TAG=$TAG" >> "$GITHUB_ENV"
           docker pull "$DOCKER_IMAGE:$TAG"
 
-      - name: Run it and check it stays up
+      - name: Run it and check it worked
         run: |
           docker run -d --name verify "$DOCKER_IMAGE:$IMAGE_TAG"
           sleep 15
-          docker ps --filter "name=verify" --filter "status=running" | grep verify
+
+          STATUS=$(docker inspect -f '{{.State.Status}}' verify)
+
+          if [ "$STATUS" = "running" ]; then
+            echo "Still running after 15s - good."
+          elif [ "$STATUS" = "exited" ]; then
+            EXIT_CODE=$(docker inspect -f '{{.State.ExitCode}}' verify)
+            if [ "$EXIT_CODE" = "0" ]; then
+              echo "Ran to completion with exit code 0 - good."
+            else
+              echo "Exited with code $EXIT_CODE - failing."
+              exit 1
+            fi
+          else
+            echo "Unexpected container status: $STATUS"
+            exit 1
+          fi
 
       - name: Show logs
         if: always()
