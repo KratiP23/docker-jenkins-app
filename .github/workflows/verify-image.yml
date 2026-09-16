@@ -19,8 +19,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Pull the image built for this commit
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
-          TAG=sha-${GITHUB_SHA:0:12}
+          TAG=sha-${HEAD_SHA:0:12}
           echo "IMAGE_TAG=$TAG" >> "$GITHUB_ENV"
           docker pull "$DOCKER_IMAGE:$TAG"
 
